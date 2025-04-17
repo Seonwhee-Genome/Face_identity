@@ -19,7 +19,7 @@ class FAISS_FlatL2:
 
     def save_index(self, index_file_name):
         self.index_path = os.path.join(self.root, index_file_name)
-        faiss.write_index(index, self.index_path)
+        faiss.write_index(self.index, self.index_path)
 
 
     def load_index(self, index_file_name):

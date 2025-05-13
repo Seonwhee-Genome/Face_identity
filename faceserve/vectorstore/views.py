@@ -1,8 +1,8 @@
 from django.shortcuts import render
 
 # Create your views here.
-from .serializers import VecSerializer, SearchSerializer
-from .models import Vecmanager, Searchmanager
+from .serializers import VecSerializer, SearchSerializer, ManageSerializer
+from .models import Vecmanager, Searchmanager, Managemanager
 import os, requests, shutil
 import datetime, re
 import numpy as np
@@ -84,3 +84,29 @@ class SearchViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+
+class ManageViewSet(viewsets.ModelViewSet):
+    queryset = Managemanager.objects.all()
+    serializer_class = ManageSerializer
+
+    def create(self, request, *args, **kwargs):
+        username = request.POST['user']
+        person = request.POST['personid']
+        command = request.POST['command']
+        if command == "replace":
+            representation = request.POST['embedvec']
+            represent_list = literal_eval(representation)
+            return JsonResponse({'message': f"사용자 {person}의 정보가 교체되었습니다", 'status': "SUCCESS"})
+        elif command == "remove":
+            res = vstore.delete_vec_from_index(person)
+            return JsonResponse(res)
+            # if res == 1:
+            #     return JsonResponse({'message': f"사용자 {person}의 정보가 삭제되었습니다", 'status': "SUCCESS"})
+            # else:
+            #     return JsonResponse({'message': f"사용자 {person}의 정보가 삭제에 실패하였습니다", 'status': "FAIL"})
+        else:
+            return JsonResponse({'message': "command를 replace 혹은 remove로 선택하십시오", 'status': "FAIL"})
+
+        
+        

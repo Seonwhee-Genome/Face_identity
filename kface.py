@@ -10,6 +10,7 @@ class Face_img:
     def __init__(self, id):
         self.id = id
         self.crop_dir = '/data/Face_id/MediaPipe/data_prep/tmp/'
+        self.vec_id = np.array([int(self.id)], dtype='int64')
 
     def MediaPipe_face_detection(self):
         mp_face_detection = mp.solutions.face_detection

@@ -75,8 +75,9 @@ class SearchViewSet(viewsets.ModelViewSet):
 
         vectors = np.array(represent_list, dtype=np.float32)
         result2 = vstore.search_index(vectors, 1)
+        
 
-        print(results)
+        # print(results)
 
 
         return JsonResponse(result2)
@@ -101,12 +102,9 @@ class ManageViewSet(viewsets.ModelViewSet):
         elif command == "remove":
             res = vstore.delete_vec_from_index(person)
             return JsonResponse(res)
-            # if res == 1:
-            #     return JsonResponse({'message': f"사용자 {person}의 정보가 삭제되었습니다", 'status': "SUCCESS"})
-            # else:
-            #     return JsonResponse({'message': f"사용자 {person}의 정보가 삭제에 실패하였습니다", 'status': "FAIL"})
+
         else:
-            return JsonResponse({'message': "command를 replace 혹은 remove로 선택하십시오", 'status': "FAIL"})
+            return JsonResponse({'message': "command를 replace 혹은 remove로 선택하십시오", 'status': "FAIL", 'http_error':500})
 
         
         

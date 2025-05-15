@@ -20,29 +20,32 @@ from django.db.models import Max
 from uuid import UUID
 from .faiss_vectorstore import FAISS_FlatL2
 
-
-vstore = FAISS_FlatL2(512)
-
-if os.path.exists(os.path.join(vstore.root, "faissDB.index")):
-    vstore.load_index("faissDB.index")
-else:
-    vstore.create_index()
+def FAISS_server_start(username: str):
+    vstore = FAISS_FlatL2(512)
+    if os.path.exists(os.path.join(vstore.root, f'faissDB-{username}.index')):
+        vstore.load_index(f'faissDB-{username}.index')        
+    else:
+        vstore.create_index()
+    print(f'지자체 {username}의 FAISS DB load')
+    return vstore, f'faissDB-{username}.index'    
 
 
 class RegisterViewSet(viewsets.ModelViewSet):
     queryset = Vecmanager.objects.all()
     serializer_class = VecSerializer
+    
 
     def create(self, request, *args, **kwargs):
         request.data._mutable = True
 
         username = request.POST['user']
+        vstore, FAISS_outfile = FAISS_server_start(username)
         representation = request.POST['embedvec']
         uuid = request.POST['personid']
         represent_list = literal_eval(representation)
         request.data['embedvec'] = represent_list
 
-        # 🔸 Generate next available personid
+        # 🔸 Generate next available vectorid
         max_vectorid = Vecmanager.objects.aggregate(Max('vectorid'))['vectorid__max']
         next_vectorid = 1 if max_vectorid is None else max_vectorid + 1
         request.data['vectorid'] = next_vectorid
@@ -56,7 +59,7 @@ class RegisterViewSet(viewsets.ModelViewSet):
         # 🔸 Add to vector index
         vector = np.array(represent_list, dtype=np.float32).reshape(1, -1)
         vstore.add_vec_to_index(vector, int(next_vectorid))
-        vstore.save_index("faissDB.index")
+        vstore.save_index(FAISS_outfile)
 
         return JsonResponse({'message': f"사용자 {uuid}의 정보가 등록되었습니다", 'status': "SUCCESS"})
         
@@ -68,17 +71,19 @@ class RegisterViewSet(viewsets.ModelViewSet):
         Returns a list of all records in Vecmanager table.
         """
         all_entries = Vecmanager.objects.all().order_by('created_at')
-        data = [
-            {
+        data = []
+        
+        for entry in all_entries:
+            vstore, _ = FAISS_server_start(entry.user)
+            data.append({
                 'personid': str(entry.personid),
                 'vectorid': entry.vectorid,
                 'user': entry.user,
-                'created_at': entry.created_at.isoformat()
-            } for entry in all_entries  
-        ]
-        data = data + [{
+                'created_at': entry.created_at.isoformat(),
                 'current vectorids': vstore.all_ids
-            }]
+            })
+            del(vstore)
+            
         return Response({'count': len(data), 'results': data})
         
           
@@ -87,6 +92,8 @@ class RegisterViewSet(viewsets.ModelViewSet):
         try:
             uuid_obj = UUID(uuid_str, version=4)
             record = Vecmanager.objects.get(personid=uuid_obj)
+
+            vstore, FAISS_outfile = FAISS_server_start(record.user)
 
             # Get and parse new embedvec
             embedvec_input = request.data.get("embedvec", None)
@@ -115,7 +122,7 @@ class RegisterViewSet(viewsets.ModelViewSet):
             # Update FAISS index
             vector = np.array(embedvec, dtype=np.float32).reshape(1, -1)            
             vstore.add_vec_to_index(vector, int(record.vectorid))
-            vstore.save_index("faissDB.index")
+            vstore.save_index(FAISS_outfile)
 
             return Response({
                 "message": f"UUID {uuid_str}의 임베딩 벡터가 성공적으로 업데이트되었습니다.",
@@ -139,13 +146,14 @@ class RegisterViewSet(viewsets.ModelViewSet):
 
             # Attempt to retrieve and delete the record
             record = Vecmanager.objects.get(personid=uuid_obj)
+            vstore, FAISS_outfile = FAISS_server_start(record.user)
             vectorid = record.vectorid
-            record.delete()
+            record.delete()            
 
             # Optionally remove from FAISS index if needed
             res = vstore.delete_vec_from_index(vectorid)            
             if res == 1:
-                vstore.save_index("faissDB.index")
+                vstore.save_index(FAISS_outfile)
                 return Response({
                     'message': f"personid {uuid_str} (vectorid {vectorid}) 삭제되었습니다",
                     'status': "SUCCESS"
@@ -174,6 +182,7 @@ class SearchViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
 
         username = request.POST['user']
+        vstore, _ = FAISS_server_start(username)
         representation = request.POST['embedvec']        
         represent_list = literal_eval(representation) 
 
@@ -188,10 +197,8 @@ class SearchViewSet(viewsets.ModelViewSet):
 
         vectors = np.array(represent_list, dtype=np.float32)
         result2 = vstore.search_index(vectors, 1)
-        
 
         # print(results)
-
 
         return JsonResponse(result2)
 

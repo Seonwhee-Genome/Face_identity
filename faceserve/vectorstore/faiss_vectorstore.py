@@ -1,6 +1,6 @@
 import faiss, os
 import numpy as np
-
+from .models import Vecmanager
 
 class FAISS_FlatL2:    
 
@@ -40,9 +40,7 @@ class FAISS_FlatL2:
 
     def search_index(self, vec, topk=2, threshold = 5.0):
         try:
-            print(vec)
             Distance, ID = self.index.search(vec, topk)
-            print(Distance)
             return self.format_faiss_results(Distance, ID, threshold)
 
         except ValueError as ve:
@@ -57,9 +55,10 @@ class FAISS_FlatL2:
         
 
     def format_faiss_results(self, D, I, threshold = 5.0):
-        result = {}        
+        result = {}
         for rank, (idx, dist) in enumerate(zip(I[0], D[0]), start=1):
-            result[f"top {rank} id"] = int(idx)
+            entry = Vecmanager.objects.get(vectorid=idx)            
+            result[f"top {rank} id"] = entry.personid #int(idx)
             result[f"top {rank} distance"] = float(dist)
 
         ## Only takes the Top-1 distance into account 

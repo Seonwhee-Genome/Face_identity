@@ -17,14 +17,15 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework import routers
-from vectorstore.views import RegisterViewSet, SearchViewSet, ManageViewSet
+from vectorstore.views import RegisterViewSet, SearchViewSet
 
 router = routers.DefaultRouter()
-router.register('register', RegisterViewSet)
+# router.register('register', RegisterViewSet)
+router.register(r'register', RegisterViewSet, basename='register')
 router.register('search', SearchViewSet)
-router.register('manage', ManageViewSet)
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include(router.urls)),
+    path('api/v1/', include(router.urls)),
 ]

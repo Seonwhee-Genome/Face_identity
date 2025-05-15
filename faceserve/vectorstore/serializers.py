@@ -1,5 +1,5 @@
 from rest_framework.serializers import ModelSerializer, ReadOnlyField
-from .models import Vecmanager, Searchmanager, Managemanager
+from .models import Vecmanager, Searchmanager
 
 class VecSerializer(ModelSerializer):
     
@@ -8,10 +8,11 @@ class VecSerializer(ModelSerializer):
         fields = (
             'user',
             'personid',
+            'vectorid',
             'embedvec',
             'created_at',
         )
-        read_only_fields = ('user', 'personid', 'created_at',)
+        read_only_fields = ('user', 'created_at',)
 
 
 class SearchSerializer(ModelSerializer):
@@ -25,16 +26,3 @@ class SearchSerializer(ModelSerializer):
         )
         read_only_fields = ('user', 'created_at',)
 
-
-class ManageSerializer(ModelSerializer):
-    
-    class Meta:
-        model = Managemanager
-        fields = (
-            'user',
-            'personid',
-            'embedvec',
-            'command',
-            'created_at',
-        )
-        read_only_fields = ('user', 'created_at',)

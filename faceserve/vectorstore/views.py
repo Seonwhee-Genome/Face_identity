@@ -4,6 +4,7 @@ from django.shortcuts import render
 from .serializers import VecSerializer, SearchSerializer
 from .models import Vecmanager, Searchmanager
 import os, requests, shutil
+import logging
 import datetime, re
 import numpy as np
 from ast import literal_eval
@@ -20,13 +21,23 @@ from django.db.models import Max
 from uuid import UUID
 from .faiss_vectorstore import FAISS_FlatL2
 
+logging.basicConfig(
+    format='%(asctime)s %(levelname)s:%(message)s',
+    level=logging.DEBUG,
+    datefmt='%m/%d/%Y %I:%M:%S %p',
+)
+logger = logging.getLogger(__name__)
+
+
 def FAISS_server_start(username: str):
     vstore = FAISS_FlatL2(512)
     if os.path.exists(os.path.join(vstore.root, f'faissDB-{username}.index')):
-        vstore.load_index(f'faissDB-{username}.index')        
+        vstore.load_index(f'faissDB-{username}.index')
+        logger.debug(f'지자체 {username}의 FAISS DB load')
     else:
         vstore.create_index()
-    print(f'지자체 {username}의 FAISS DB load')
+        logger.debug(f'지자체 {username}의 FAISS DB 생성')
+    
     return vstore, f'faissDB-{username}.index'    
 
 
@@ -105,7 +116,8 @@ class RegisterViewSet(viewsets.ModelViewSet):
             if isinstance(embedvec_input, str):
                 try:
                     embedvec = literal_eval(embedvec_input)
-                except Exception:
+                except Exception as ea:
+                    logger.error(ea)
                     return Response({"message": "embedvec 문자열을 리스트로 변환할 수 없습니다.", "status": "FAIL"},
                                     status=status.HTTP_400_BAD_REQUEST)
             else:
@@ -129,10 +141,12 @@ class RegisterViewSet(viewsets.ModelViewSet):
                 "status": "SUCCESS"
             })
 
-        except Vecmanager.DoesNotExist:
+        except Vecmanager.DoesNotExist as dne:
+            logger.error(dne)
             return Response({"message": f"UUID {uuid_str} 에 해당하는 레코드를 찾을 수 없습니다.", "status": "FAIL"},
                             status=status.HTTP_404_NOT_FOUND)
-        except ValueError:
+        except ValueError as ve:
+            logger.error(ve)
             return Response({"message": "UUID 형식이 잘못되었습니다.", "status": "FAIL"},
                             status=status.HTTP_400_BAD_REQUEST)        
 
@@ -161,13 +175,15 @@ class RegisterViewSet(viewsets.ModelViewSet):
             else:
                 return Response({'message': f"삭제할 사용자 {uuid_str}의 정보가 존재하지 않습니다", 'status': "FAIL"}, status=status.HTTP_404_NOT_FOUND)
 
-        except Vecmanager.DoesNotExist:
+        except Vecmanager.DoesNotExist as dne:
+            logger.error(dne)
             return Response({
                 'message': f"personid {uuid_str} 에 해당하는 레코드가 존재하지 않습니다.",
                 'status': "FAIL"
             }, status=status.HTTP_404_NOT_FOUND)
 
-        except ValueError:
+        except ValueError as ve:
+            logger.error(ve)
             return Response({
                 'message': "잘못된 UUID 형식입니다.",
                 'status': "FAIL"
@@ -196,9 +212,12 @@ class SearchViewSet(viewsets.ModelViewSet):
         ####### similarity search at once #############
 
         vectors = np.array(represent_list, dtype=np.float32)
+        logger.debug("Try to do similarity search")
         result2 = vstore.search_index(vectors, 1)
-
-        # print(results)
+        logger.debug("개별 프레임의 유사도")
+        logger.debug(results)
+        logger.debug("종합 유사도")
+        logger.debug(result2)
 
         return JsonResponse(result2)
 

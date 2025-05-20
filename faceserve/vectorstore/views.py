@@ -148,7 +148,86 @@ class RegisterViewSet(viewsets.ModelViewSet):
         except ValueError as ve:
             logger.error(ve)
             return Response({"message": "UUID 형식이 잘못되었습니다.", "status": "FAIL"},
-                            status=status.HTTP_400_BAD_REQUEST)        
+                            status=status.HTTP_400_BAD_REQUEST)
+            
+
+    @action(detail=False, methods=['post'], url_path='upsert')
+    def upsert_vecmanager(self, request):
+        try:
+            uuid_str = request.data.get("personid", None)
+            if not uuid_str:
+                return Response({"message": "personid 필드는 필수입니다.", "status": "FAIL"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                uuid_obj = UUID(uuid_str, version=4)
+            except ValueError:
+                return Response({"message": "잘못된 UUID 형식입니다.", "status": "FAIL"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            user = request.data.get("user", "AnonymousUser")            
+            embedvec_input = request.data.get("embedvec", None)
+
+            vstore, FAISS_outfile = FAISS_server_start(user)
+
+            if embedvec_input is None:
+                return Response({"message": "embedvec 필드는 필수입니다.", "status": "FAIL"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            if isinstance(embedvec_input, str):
+                try:
+                    embedvec = literal_eval(embedvec_input)
+                except Exception:
+                    return Response({"message": "embedvec 문자열을 리스트로 변환할 수 없습니다.", "status": "FAIL"},
+                                    status=status.HTTP_400_BAD_REQUEST)
+            else:
+                embedvec = embedvec_input
+
+            if not isinstance(embedvec, list) or len(embedvec) != 512:
+                return Response({"message": "embedvec은 512차원의 리스트여야 합니다.", "status": "FAIL"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            vector = np.array(embedvec, dtype=np.float32).reshape(1, -1)
+
+            try:
+                # Try update                
+                record = Vecmanager.objects.get(personid=uuid_obj)
+                record.embedvec = embedvec
+                record.user = user
+                record.save()
+                
+                vstore.add_vec_to_index(vector, int(record.vectorid))
+                
+            
+                action_type = "updated"
+            except Vecmanager.DoesNotExist:
+                # Create new                
+                max_vectorid = Vecmanager.objects.aggregate(Max('vectorid'))['vectorid__max']
+                next_vectorid = 1 if max_vectorid is None else max_vectorid + 1                
+
+                record = Vecmanager.objects.create(
+                    personid=uuid_obj,
+                    user=user,
+                    vectorid=next_vectorid,
+                    embedvec=embedvec
+                )
+
+                vstore.add_vec_to_index(vector, int(next_vectorid))
+                action_type = "created"
+
+            vstore.save_index(FAISS_outfile)
+
+            return Response({
+                "message": f"PersonID {uuid_str} 로 레코드를 성공적으로 {action_type} 했습니다.",
+                "personid": record.personid,
+                "status": "SUCCESS"
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({
+                "message": f"서버 오류: {str(e)}",
+                "status": "FAIL"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
     

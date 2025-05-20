@@ -24,7 +24,7 @@ router = routers.DefaultRouter()
 # router.register('register', RegisterViewSet)
 router.register(r'register', RegisterViewSet, basename='register')
 router.register('search', SearchViewSet)
-router.register('download', DownloadViewSet)
+router.register('aimodel', DownloadViewSet)
 
 
 urlpatterns = [

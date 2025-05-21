@@ -42,12 +42,15 @@ class DownloadViewSet(viewsets.ModelViewSet):
         
         try:
             filename = os.path.basename(file_path)
+            file_size = os.path.getsize(file_path)
             logger.debug(f'file {filename} at {file_path} will be downloaded')
-            return FileResponse(
+            response = FileResponse(
                 open(file_path, 'rb'),
                 as_attachment=True,
                 filename=filename
             )
+            response['Content-Length'] = str(file_size) # ensure Content-Length included in the Response header
+            return response
         except Exception as e:
             logger.error(str(e))
             return Response(

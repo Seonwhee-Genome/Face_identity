@@ -28,6 +28,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+http_codes = {500: status.HTTP_500_INTERNAL_SERVER_ERROR,
+              404: status.HTTP_404_NOT_FOUND,
+              400: status.HTTP_400_BAD_REQUEST,
+              201: status.HTTP_201_CREATED,
+              200: status.HTTP_200_OK}
+THRESHOLD = 5.0
 
 def FAISS_server_start(username: str):
     vstore = FAISS_FlatL2(512)
@@ -72,7 +78,7 @@ class RegisterViewSet(viewsets.ModelViewSet):
         vstore.add_vec_to_index(vector, int(next_vectorid))
         vstore.save_index(FAISS_outfile)
 
-        return JsonResponse({'message': f"사용자 {uuid}의 정보가 등록되었습니다", 'status': "SUCCESS"})
+        return Response({'message': f"사용자 {uuid}의 정보가 등록되었습니다", 'status': "SUCCESS"}, status=http_codes[201])
         
 
     @action(detail=False, methods=['get'], url_path='dump-db')
@@ -110,7 +116,7 @@ class RegisterViewSet(viewsets.ModelViewSet):
             embedvec_input = request.data.get("embedvec", None)
             if embedvec_input is None:
                 return Response({"message": "embedvec 값이 필요합니다.", "status": "FAIL"},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=http_codes[400])
 
             # Convert string to list if needed
             if isinstance(embedvec_input, str):
@@ -119,13 +125,13 @@ class RegisterViewSet(viewsets.ModelViewSet):
                 except Exception as ea:
                     logger.error(ea)
                     return Response({"message": "embedvec 문자열을 리스트로 변환할 수 없습니다.", "status": "FAIL"},
-                                    status=status.HTTP_400_BAD_REQUEST)
+                                    status=http_codes[400])
             else:
                 embedvec = embedvec_input
 
             if not isinstance(embedvec, list) or len(embedvec) != 512:
                 return Response({"message": "embedvec은 512차원의 리스트여야 합니다.", "status": "FAIL"},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=http_codes[400])
 
             # Update record
             record.embedvec = embedvec
@@ -144,11 +150,11 @@ class RegisterViewSet(viewsets.ModelViewSet):
         except Vecmanager.DoesNotExist as dne:
             logger.error(dne)
             return Response({"message": f"UUID {uuid_str} 에 해당하는 레코드를 찾을 수 없습니다.", "status": "FAIL"},
-                            status=status.HTTP_404_NOT_FOUND)
+                            status=http_codes[404])
         except ValueError as ve:
             logger.error(ve)
             return Response({"message": "UUID 형식이 잘못되었습니다.", "status": "FAIL"},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=http_codes[400])
             
 
     @action(detail=False, methods=['post'], url_path='upsert')
@@ -157,13 +163,13 @@ class RegisterViewSet(viewsets.ModelViewSet):
             uuid_str = request.data.get("personid", None)
             if not uuid_str:
                 return Response({"message": "personid 필드는 필수입니다.", "status": "FAIL"},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=http_codes[400])
 
             try:
                 uuid_obj = UUID(uuid_str, version=4)
             except ValueError:
                 return Response({"message": "잘못된 UUID 형식입니다.", "status": "FAIL"},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=http_codes[400])
 
             user = request.data.get("user", "AnonymousUser")            
             embedvec_input = request.data.get("embedvec", None)
@@ -172,20 +178,20 @@ class RegisterViewSet(viewsets.ModelViewSet):
 
             if embedvec_input is None:
                 return Response({"message": "embedvec 필드는 필수입니다.", "status": "FAIL"},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=http_codes[400])
 
             if isinstance(embedvec_input, str):
                 try:
                     embedvec = literal_eval(embedvec_input)
                 except Exception:
                     return Response({"message": "embedvec 문자열을 리스트로 변환할 수 없습니다.", "status": "FAIL"},
-                                    status=status.HTTP_400_BAD_REQUEST)
+                                    status=http_codes[400])
             else:
                 embedvec = embedvec_input
 
             if not isinstance(embedvec, list) or len(embedvec) != 512:
                 return Response({"message": "embedvec은 512차원의 리스트여야 합니다.", "status": "FAIL"},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=http_codes[400])
 
             vector = np.array(embedvec, dtype=np.float32).reshape(1, -1)
 
@@ -221,13 +227,13 @@ class RegisterViewSet(viewsets.ModelViewSet):
                 "message": f"PersonID {uuid_str} 로 레코드를 성공적으로 {action_type} 했습니다.",
                 "personid": record.personid,
                 "status": "SUCCESS"
-            }, status=status.HTTP_200_OK)
+            }, status=http_codes[201])
 
         except Exception as e:
             return Response({
                 "message": f"서버 오류: {str(e)}",
                 "status": "FAIL"
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            }, status=http_codes[500])
 
 
     
@@ -250,7 +256,7 @@ class RegisterViewSet(viewsets.ModelViewSet):
                 return Response({
                     'message': f"personid {uuid_str} (vectorid {vectorid}) 삭제되었습니다",
                     'status': "SUCCESS"
-                }, status=status.HTTP_200_OK)
+                }, status=http_codes[200])
             else:
                 return Response({'message': f"삭제할 사용자 {uuid_str}의 정보가 존재하지 않습니다", 'status': "FAIL"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -259,14 +265,14 @@ class RegisterViewSet(viewsets.ModelViewSet):
             return Response({
                 'message': f"personid {uuid_str} 에 해당하는 레코드가 존재하지 않습니다.",
                 'status': "FAIL"
-            }, status=status.HTTP_404_NOT_FOUND)
+            }, status=http_codes[404])
 
         except ValueError as ve:
             logger.error(ve)
             return Response({
                 'message': "잘못된 UUID 형식입니다.",
                 'status': "FAIL"
-            }, status=status.HTTP_400_BAD_REQUEST)
+            }, status=http_codes[400])
 
 
 
@@ -285,20 +291,20 @@ class SearchViewSet(viewsets.ModelViewSet):
         results = []
         for vec in represent_list:
             vector = np.array(vec, dtype=np.float32).reshape(1, -1)
-            result = vstore.search_index(vector, 1)
+            result, code = vstore.search_index(vector, 1, THRESHOLD)
             results.append(result)
 
         ####### similarity search at once #############
 
         vectors = np.array(represent_list, dtype=np.float32)
         logger.debug("Try to do similarity search")
-        result2 = vstore.search_index(vectors, 1)
+        result2, code2 = vstore.search_index(vectors, 1, THRESHOLD)
         logger.debug("개별 프레임의 유사도")
         logger.debug(results)
         logger.debug("종합 유사도")
-        logger.debug(result2)
+        logger.debug(result2)        
 
-        return JsonResponse(result2)
+        return Response(result2, status=http_codes[code2])
 
 
     def perform_create(self, serializer):

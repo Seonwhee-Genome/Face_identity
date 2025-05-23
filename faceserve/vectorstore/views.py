@@ -14,6 +14,7 @@ from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.renderers import JSONRenderer
 from django.shortcuts import get_object_or_404
 from django.http import Http404,HttpResponse,HttpResponseRedirect, JsonResponse
+from django.utils.datastructures import MultiValueDictKeyError
 
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -282,29 +283,34 @@ class SearchViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
 
-        username = request.POST['user']
-        vstore, _ = FAISS_server_start(username)
-        representation = request.POST['embedvec']        
-        represent_list = literal_eval(representation) 
+        try:
+            username = request.POST['user']
+            vstore, _ = FAISS_server_start(username)
+            representation = request.POST['embedvec']        
+            represent_list = literal_eval(representation) 
 
-        ######## similarity search one-by-one ###########
-        results = []
-        for vec in represent_list:
-            vector = np.array(vec, dtype=np.float32).reshape(1, -1)
-            result, code = vstore.search_index(vector, 1, THRESHOLD)
-            results.append(result)
+            ######## similarity search one-by-one ###########
+            results = []
+            for vec in represent_list:
+                vector = np.array(vec, dtype=np.float32).reshape(1, -1)
+                result, code = vstore.search_index(vector, 1, THRESHOLD)
+                results.append(result)
 
-        ####### similarity search at once #############
+            ####### similarity search at once #############
 
-        vectors = np.array(represent_list, dtype=np.float32)
-        logger.debug("Try to do similarity search")
-        result2, code2 = vstore.search_index(vectors, 1, THRESHOLD)
-        logger.debug("개별 프레임의 유사도")
-        logger.debug(results)
-        logger.debug("종합 유사도")
-        logger.debug(result2)        
+            vectors = np.array(represent_list, dtype=np.float32)
+            logger.debug("Try to do similarity search")
+            result2, code2 = vstore.search_index(vectors, 1, THRESHOLD)
+            logger.debug("개별 프레임의 유사도")
+            logger.debug(results)
+            logger.debug("종합 유사도")
+            logger.debug(result2)
 
-        return Response(result2, status=http_codes[code2])
+            return Response(result2, status=http_codes[code2])
+
+        except MultiValueDictKeyError as me:
+            logger.error(me)
+            return Response({"message": f"API 입력값 중에 {me}이 누락되었습니다."}, status=http_codes[400])
 
 
     def perform_create(self, serializer):

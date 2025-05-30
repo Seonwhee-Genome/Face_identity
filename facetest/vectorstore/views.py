@@ -2,7 +2,7 @@ from django.shortcuts import render
 
 # Create your views here.
 from .serializers import VecSerializer, SearchSerializer
-from .models import Vecmanager, Searchmanager
+from .models import Vecmanager, Searchmanager, VecImage, SearchImage
 import os, requests, shutil
 import logging
 import datetime, re
@@ -19,7 +19,6 @@ from django.utils.datastructures import MultiValueDictKeyError
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from django.db.models import Max
-from uuid import UUID
 from .faiss_vectorstore import FAISS_FlatL2
 
 logging.basicConfig(
@@ -59,7 +58,7 @@ class RegisterViewSet(viewsets.ModelViewSet):
         username = request.POST['user']
         vstore, FAISS_outfile = FAISS_server_start(username)
         representation = request.POST['embedvec']
-        uuid = request.POST['personid']
+        pid = request.POST['personid']
         represent_list = literal_eval(representation)
         request.data['embedvec'] = represent_list
 
@@ -72,14 +71,19 @@ class RegisterViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save(user=username)
+        vec_obj = serializer.save(user=username)
+
+        # Save multiple images
+        images = request.FILES.getlist('images')
+        for img in images:
+            VecImage.objects.create(vecmanager=vec_obj, image=img)
             
         # 🔸 Add to vector index
         vector = np.array(represent_list, dtype=np.float32).reshape(1, -1)
         vstore.add_vec_to_index(vector, int(next_vectorid))
         vstore.save_index(FAISS_outfile)
 
-        return Response({'message': f"사용자 {uuid}의 정보가 등록되었습니다", 'status': "SUCCESS"}, status=http_codes[201])
+        return Response({'message': f"사용자 {pid}의 정보가 등록되었습니다", 'status': "SUCCESS"}, status=http_codes[201])
         
 
     @action(detail=False, methods=['get'], url_path='dump-db')
@@ -102,74 +106,16 @@ class RegisterViewSet(viewsets.ModelViewSet):
             })
             del(vstore)
             
-        return Response({'count': len(data), 'results': data})
-        
-          
-    @action(detail=False, methods=['put'], url_path='update-embedvec/(?P<uuid_str>[0-9a-f-]+)')
-    def update_embedvec(self, request, uuid_str=None):
-        try:
-            uuid_obj = UUID(uuid_str, version=4)
-            record = Vecmanager.objects.get(personid=uuid_obj)
+        return Response({'count': len(data), 'results': data})     
 
-            vstore, FAISS_outfile = FAISS_server_start(record.user)
-
-            # Get and parse new embedvec
-            embedvec_input = request.data.get("embedvec", None)
-            if embedvec_input is None:
-                return Response({"message": "embedvec 값이 필요합니다.", "status": "FAIL"},
-                                status=http_codes[400])
-
-            # Convert string to list if needed
-            if isinstance(embedvec_input, str):
-                try:
-                    embedvec = literal_eval(embedvec_input)
-                except Exception as ea:
-                    logger.error(ea)
-                    return Response({"message": "embedvec 문자열을 리스트로 변환할 수 없습니다.", "status": "FAIL"},
-                                    status=http_codes[400])
-            else:
-                embedvec = embedvec_input
-
-            if not isinstance(embedvec, list) or len(embedvec) != 512:
-                return Response({"message": "embedvec은 512차원의 리스트여야 합니다.", "status": "FAIL"},
-                                status=http_codes[400])
-
-            # Update record
-            record.embedvec = embedvec
-            record.save()
-
-            # Update FAISS index
-            vector = np.array(embedvec, dtype=np.float32).reshape(1, -1)            
-            vstore.add_vec_to_index(vector, int(record.vectorid))
-            vstore.save_index(FAISS_outfile)
-
-            return Response({
-                "message": f"UUID {uuid_str}의 임베딩 벡터가 성공적으로 업데이트되었습니다.",
-                "status": "SUCCESS"
-            })
-
-        except Vecmanager.DoesNotExist as dne:
-            logger.error(dne)
-            return Response({"message": f"UUID {uuid_str} 에 해당하는 레코드를 찾을 수 없습니다.", "status": "FAIL"},
-                            status=http_codes[404])
-        except ValueError as ve:
-            logger.error(ve)
-            return Response({"message": "UUID 형식이 잘못되었습니다.", "status": "FAIL"},
-                            status=http_codes[400])
             
 
     @action(detail=False, methods=['post'], url_path='upsert')
     def upsert_vecmanager(self, request):
         try:
-            uuid_str = request.data.get("personid", None)
-            if not uuid_str:
+            pid = request.data.get("personid", None)
+            if not pid:
                 return Response({"message": "personid 필드는 필수입니다.", "status": "FAIL"},
-                                status=http_codes[400])
-
-            try:
-                uuid_obj = UUID(uuid_str, version=4)
-            except ValueError:
-                return Response({"message": "잘못된 UUID 형식입니다.", "status": "FAIL"},
                                 status=http_codes[400])
 
             user = request.data.get("user", "AnonymousUser")            
@@ -198,7 +144,7 @@ class RegisterViewSet(viewsets.ModelViewSet):
 
             try:
                 # Try update                
-                record = Vecmanager.objects.get(personid=uuid_obj)
+                record = Vecmanager.objects.get(personid=pid)
                 record.embedvec = embedvec
                 record.user = user
                 record.save()
@@ -213,7 +159,7 @@ class RegisterViewSet(viewsets.ModelViewSet):
                 next_vectorid = 1 if max_vectorid is None else max_vectorid + 1                
 
                 record = Vecmanager.objects.create(
-                    personid=uuid_obj,
+                    personid=pid,
                     user=user,
                     vectorid=next_vectorid,
                     embedvec=embedvec
@@ -225,7 +171,7 @@ class RegisterViewSet(viewsets.ModelViewSet):
             vstore.save_index(FAISS_outfile)
 
             return Response({
-                "message": f"PersonID {uuid_str} 로 레코드를 성공적으로 {action_type} 했습니다.",
+                "message": f"PersonID {pid} 로 레코드를 성공적으로 {action_type} 했습니다.",
                 "personid": record.personid,
                 "status": "SUCCESS"
             }, status=http_codes[201])
@@ -239,13 +185,11 @@ class RegisterViewSet(viewsets.ModelViewSet):
 
     
     @action(detail=False, methods=['delete'], url_path='delete-by-uuid/(?P<uuid_str>[0-9a-f-]+)')
-    def delete_by_uuid(self, request, uuid_str=None):
+    def delete_by_pid(self, request, pid):
         try:
-            # Validate UUID format
-            uuid_obj = UUID(uuid_str, version=4)
-
+            
             # Attempt to retrieve and delete the record
-            record = Vecmanager.objects.get(personid=uuid_obj)
+            record = Vecmanager.objects.get(personid=pid)
             vstore, FAISS_outfile = FAISS_server_start(record.user)
             vectorid = record.vectorid
             record.delete()            
@@ -255,23 +199,23 @@ class RegisterViewSet(viewsets.ModelViewSet):
             if res == 1:
                 vstore.save_index(FAISS_outfile)
                 return Response({
-                    'message': f"personid {uuid_str} (vectorid {vectorid}) 삭제되었습니다",
+                    'message': f"personid {pid} (vectorid {vectorid}) 삭제되었습니다",
                     'status': "SUCCESS"
                 }, status=http_codes[200])
             else:
-                return Response({'message': f"삭제할 사용자 {uuid_str}의 정보가 존재하지 않습니다", 'status': "FAIL"}, status=status.HTTP_404_NOT_FOUND)
+                return Response({'message': f"삭제할 사용자 {pid}의 정보가 존재하지 않습니다", 'status': "FAIL"}, status=status.HTTP_404_NOT_FOUND)
 
         except Vecmanager.DoesNotExist as dne:
             logger.error(dne)
             return Response({
-                'message': f"personid {uuid_str} 에 해당하는 레코드가 존재하지 않습니다.",
+                'message': f"personid {pid} 에 해당하는 레코드가 존재하지 않습니다.",
                 'status': "FAIL"
             }, status=http_codes[404])
 
         except ValueError as ve:
             logger.error(ve)
             return Response({
-                'message': "잘못된 UUID 형식입니다.",
+                'message': "잘못된 ID 형식입니다.",
                 'status': "FAIL"
             }, status=http_codes[400])
 
@@ -285,16 +229,24 @@ class SearchViewSet(viewsets.ModelViewSet):
 
         try:
             username = request.POST['user']
+            pid = request.POST['personid']
             vstore, _ = FAISS_server_start(username)
             representation = request.POST['embedvec']        
-            represent_list = literal_eval(representation) 
+            represent_list = literal_eval(representation)
+            request.data['embedvec'] = represent_list            
+
+            # Save multiple images
+            images = request.FILES.getlist('images')
+
 
             ######## similarity search one-by-one ###########
+            img_results = []
             results = []
             for vec in represent_list:
                 vector = np.array(vec, dtype=np.float32).reshape(1, -1)
                 result, code = vstore.search_index(vector, 1, THRESHOLD)
                 results.append(result)
+                
 
             ####### similarity search at once #############
 

@@ -101,6 +101,8 @@ class RegisterViewSet(viewsets.ModelViewSet):
                 'personid': str(entry.personid),
                 'vectorid': entry.vectorid,
                 'user': entry.user,
+                'imgfilename' : entry.imgfilename,
+                'modelid' : entry.modelid,
                 'created_at': entry.created_at.isoformat(),
                 'current vectorids': vstore.all_ids
             })
@@ -228,15 +230,19 @@ class SearchViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
 
         try:
+            request.data._mutable = True
             username = request.POST['user']
             pid = request.POST['personid']
             vstore, _ = FAISS_server_start(username)
             representation = request.POST['embedvec']        
             represent_list = literal_eval(representation)
-            request.data['embedvec'] = represent_list            
+            request.data['embedvec'] = represent_list[0]
 
             # Save multiple images
             images = request.FILES.getlist('images')
+
+            request.data['personid'] = pid
+            request.data['modelid'] = request.POST['modelid']
 
 
             ######## similarity search one-by-one ###########
@@ -244,19 +250,36 @@ class SearchViewSet(viewsets.ModelViewSet):
             results = []
             for vec in represent_list:
                 vector = np.array(vec, dtype=np.float32).reshape(1, -1)
-                result, code = vstore.search_index(vector, 1, THRESHOLD)
+                result, code = vstore.search_index(vector, 2, THRESHOLD)
                 results.append(result)
+
+            logger.debug(represent_list[0])
                 
 
             ####### similarity search at once #############
 
             vectors = np.array(represent_list, dtype=np.float32)
             logger.debug("Try to do similarity search")
-            result2, code2 = vstore.search_index(vectors, 1, THRESHOLD)
+            result2, code2 = vstore.search_index(vectors, 2, THRESHOLD)            
             logger.debug("개별 프레임의 유사도")
             logger.debug(results)
             logger.debug("종합 유사도")
             logger.debug(result2)
+            entry1 = Vecmanager.objects.get(personid=result2['top 1 id'])
+            request.data['sim_imgfile1'] = entry1.imgfilename
+            entry2 = Vecmanager.objects.get(personid=result2['top 2 id'])
+            request.data['sim_imgfile2'] = entry2.imgfilename
+            
+            request.data['distance1'] = result2['top 1 distance']
+            request.data['distance2'] = result2['top 2 distance']
+            if result2['status'] == 'IDENTIFIED':
+                request.data['identify'] = True
+            else:
+                request.data['identify'] = False
+
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save(user=username)
 
             return Response(result2, status=http_codes[code2])
 
@@ -265,7 +288,5 @@ class SearchViewSet(viewsets.ModelViewSet):
             return Response({"message": f"API 입력값 중에 {me}이 누락되었습니다."}, status=http_codes[400])
 
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
 
  

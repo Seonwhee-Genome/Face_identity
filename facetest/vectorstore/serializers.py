@@ -18,6 +18,8 @@ class VecSerializer(ModelSerializer):
             'personid',
             'vectorid',
             'embedvec',
+            'imgfilename',
+            'modelid',
             'images',
             'created_at',
         )

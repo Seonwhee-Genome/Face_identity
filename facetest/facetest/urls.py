@@ -16,6 +16,8 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
 from rest_framework import routers
 from vectorstore.views import RegisterViewSet, SearchViewSet
 from facenet.views import DownloadViewSet
@@ -31,3 +33,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/test/', include(router.urls)),
 ]
+
+# Add this at the end — only for development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

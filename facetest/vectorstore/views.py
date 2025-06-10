@@ -15,9 +15,10 @@ from rest_framework.renderers import JSONRenderer
 from django.shortcuts import get_object_or_404
 from django.http import Http404,HttpResponse,HttpResponseRedirect, JsonResponse
 from django.utils.datastructures import MultiValueDictKeyError
-
+from django.conf import settings
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from django.core.files import File
 from django.db.models import Max
 from .faiss_vectorstore import FAISS_FlatL2
 
@@ -235,14 +236,15 @@ class SearchViewSet(viewsets.ModelViewSet):
             pid = request.POST['personid']
             vstore, _ = FAISS_server_start(username)
             representation = request.POST['embedvec']        
-            represent_list = literal_eval(representation)
-            request.data['embedvec'] = represent_list[0]
+            represent_list = literal_eval(representation)            
+            # request.data['embedvec'] = represent_list[0]
 
             # Save multiple images
             images = request.FILES.getlist('images')
+            imgPath = request.POST['imgfilename']
 
-            request.data['personid'] = pid
-            request.data['modelid'] = request.POST['modelid']
+            # request.data['personid'] = pid
+            # request.data['modelid'] = request.POST['modelid']
 
 
             ######## similarity search one-by-one ###########
@@ -265,21 +267,46 @@ class SearchViewSet(viewsets.ModelViewSet):
             logger.debug(results)
             logger.debug("종합 유사도")
             logger.debug(result2)
-            entry1 = Vecmanager.objects.get(personid=result2['top 1 id'])
-            request.data['sim_imgfile1'] = entry1.imgfilename
-            entry2 = Vecmanager.objects.get(personid=result2['top 2 id'])
-            request.data['sim_imgfile2'] = entry2.imgfilename
-            
-            request.data['distance1'] = result2['top 1 distance']
-            request.data['distance2'] = result2['top 2 distance']
-            if result2['status'] == 'IDENTIFIED':
-                request.data['identify'] = True
-            else:
-                request.data['identify'] = False
 
-            serializer = self.get_serializer(data=request.data)
+            entry1 = Vecmanager.objects.get(personid=result2['top 1 id'])
+            entry2 = Vecmanager.objects.get(personid=result2['top 2 id'])            
+
+            data = {
+                "user": username,
+                "personid": pid,
+                "imgfilename": imgPath,
+                "embedvec" : represent_list[0],
+                'modelid' : request.POST['modelid'],
+                'sim_imgfile1' : entry1.imgfilename,
+                'sim_imgfile2' : entry2.imgfilename,                
+                'distance1' : result2['top 1 distance'],
+                'distance2' : result2['top 2 distance'],
+                'identify' : True if result2['status'] == 'IDENTIFIED' else False,
+            }
+            
+            serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
-            serializer.save(user=username)
+            serializer.save()           
+
+            # Path to your image file under MEDIA_ROOT
+            imgpath1 = os.path.join(settings.MEDIA_ROOT, 'uploads', entry1.imgfilename)
+            imgpath2 = os.path.join(settings.MEDIA_ROOT, 'uploads', entry2.imgfilename)
+            img_query = os.path.join(settings.MEDIA_ROOT, 'uploads', imgPath)
+
+            sm = Searchmanager.objects.last()
+            with open(imgpath1, 'rb') as f:
+                # Save file with a relative name to avoid SuspiciousFileOperation exception by Django
+                # Django is very strict about file paths.
+                sm.sim_image1.save('auto_test1.jpg', File(f)) # ✅ Use just the filename, not full path
+                sm.save()
+                
+            with open(imgpath2, 'rb') as f:           
+                sm.sim_image2.save('auto_test2.jpg', File(f))
+                sm.save()
+
+            with open(img_query, 'rb') as f:           
+                sm.qimage.save('auto_test3.jpg', File(f))
+                sm.save()
 
             return Response(result2, status=http_codes[code2])
 

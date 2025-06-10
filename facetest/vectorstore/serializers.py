@@ -12,17 +12,18 @@ class VecSerializer(ModelSerializer):
     
     class Meta:
         model = Vecmanager
-        fields = (
-            'id',
-            'user',
-            'personid',
-            'vectorid',
-            'embedvec',
-            'imgfilename',
-            'modelid',
-            'images',
-            'created_at',
-        )
+        fields = '__all__'
+        # fields = (
+        #     'id',
+        #     'user',
+        #     'personid',
+        #     'vectorid',
+        #     'embedvec',
+        #     'imgfilename',
+        #     'modelid',
+        #     'images',
+        #     'created_at',
+        # )
         read_only_fields = ('id', 'user', 'created_at',)
 
 
@@ -37,12 +38,13 @@ class SearchSerializer(ModelSerializer):
     
     class Meta:
         model = Searchmanager
-        fields = (
-            'id',
-            'user',
-            'embedvec',
-            'images',
-            'created_at',
-        )
-        read_only_fields = ('user', 'created_at',)
+        fields = '__all__'
+        # fields = (
+        #     'id',
+        #     'user',
+        #     'embedvec',
+        #     'images',
+        #     'created_at',
+        # )
+        read_only_fields = ('created_at',)
 

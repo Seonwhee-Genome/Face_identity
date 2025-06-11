@@ -227,6 +227,7 @@ class RegisterViewSet(viewsets.ModelViewSet):
 class SearchViewSet(viewsets.ModelViewSet):
     queryset = Searchmanager.objects.all()
     serializer_class = SearchSerializer
+    lookup_field = 'personid'
 
     def create(self, request, *args, **kwargs):
 
@@ -313,6 +314,9 @@ class SearchViewSet(viewsets.ModelViewSet):
         except MultiValueDictKeyError as me:
             logger.error(me)
             return Response({"message": f"API 입력값 중에 {me}이 누락되었습니다."}, status=http_codes[400])
+
+
+    
 
 
 

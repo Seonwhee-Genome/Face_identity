@@ -45,7 +45,7 @@ class SearchImageInline(admin.TabularInline):
 class SearchmanagerAdmin(admin.ModelAdmin):
     list_display = (
         'user', 'personid', 'imgfilename', 'image_thumb',  
-        'identify','sim_image1_thumb', 'distance1', 'sim_image2_thumb', 'distance2',  'modelid', 'created_at'
+        'identify', 'correct', 'sim_image1_thumb', 'distance1', 'sim_image2_thumb', 'distance2',  'modelid', 'created_at'
     )
     list_filter = ('user', 'identify', 'created_at')
     search_fields = ('personid', 'imgfilename', 'modelid')

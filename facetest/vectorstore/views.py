@@ -117,8 +117,12 @@ class RegisterViewSet(viewsets.ModelViewSet):
     def upsert_vecmanager(self, request):
         try:
             pid = request.data.get("personid", None)
+            imgfile = request.data.get("imgfilename", None)
             if not pid:
                 return Response({"message": "personid 필드는 필수입니다.", "status": "FAIL"},
+                                status=http_codes[400])
+            if not imgfile:
+                return Response({"message": "imagefilename 필드는 필수입니다.", "status": "FAIL"},
                                 status=http_codes[400])
 
             user = request.data.get("user", "AnonymousUser")            
@@ -150,9 +154,20 @@ class RegisterViewSet(viewsets.ModelViewSet):
                 record = Vecmanager.objects.get(personid=pid)
                 record.embedvec = embedvec
                 record.user = user
+
+                oldimgpath = os.path.join(settings.MEDIA_ROOT, 'uploads', record.imgfilename)
+                os.remove(oldimgpath)
+                print(f"old image file {record.imgfilename} deleted")
+                record.imgfilename = imgfile
+                
                 record.save()
                 
                 vstore.add_vec_to_index(vector, int(record.vectorid))
+
+                # Save multiple images
+                images = request.FILES.getlist('images')
+                for img in images:
+                    VecImage.objects.create(vecmanager=vec_obj, image=img)
                 
             
                 action_type = "updated"
@@ -184,34 +199,38 @@ class RegisterViewSet(viewsets.ModelViewSet):
                 "message": f"서버 오류: {str(e)}",
                 "status": "FAIL"
             }, status=http_codes[500])
-
-
-    
-    @action(detail=False, methods=['delete'], url_path='delete-by-uuid/(?P<uuid_str>[0-9a-f-]+)')
-    def delete_by_pid(self, request, pid):
-        try:
+        
             
+
+    @action(detail=False, methods=['delete'], url_path='delete-by-personid/(?P<personid>[^/]+)')
+    def delete_by_personid(self, request, personid):
+        try:
             # Attempt to retrieve and delete the record
-            record = Vecmanager.objects.get(personid=pid)
+            record = Vecmanager.objects.get(personid=personid)
             vstore, FAISS_outfile = FAISS_server_start(record.user)
             vectorid = record.vectorid
-            record.delete()            
+            imgpath = os.path.join(settings.MEDIA_ROOT, 'uploads', record.imgfilename)
+            os.remove(imgpath)
+            print(f"image file {record.imgfilename} deleted")
+            record.delete()
 
-            # Optionally remove from FAISS index if needed
-            res = vstore.delete_vec_from_index(vectorid)            
+            # Optionally remove from FAISS index
+            res = vstore.delete_vec_from_index(vectorid)
             if res == 1:
                 vstore.save_index(FAISS_outfile)
                 return Response({
-                    'message': f"personid {pid} (vectorid {vectorid}) 삭제되었습니다",
+                    'message': f"personid {personid} (vectorid {vectorid}) 삭제되었습니다",
                     'status': "SUCCESS"
                 }, status=http_codes[200])
             else:
-                return Response({'message': f"삭제할 사용자 {pid}의 정보가 존재하지 않습니다", 'status': "FAIL"}, status=http_codes[404])
-
+                return Response({
+                    'message': f"삭제할 사용자 {personid}의 벡터 정보가 존재하지 않습니다",
+                    'status': "FAIL"
+                }, status=http_codes[404])
         except Vecmanager.DoesNotExist as dne:
             logger.error(dne)
             return Response({
-                'message': f"personid {pid} 에 해당하는 레코드가 존재하지 않습니다.",
+                'message': f"personid {personid} 에 해당하는 레코드가 존재하지 않습니다.",
                 'status': "FAIL"
             }, status=http_codes[404])
 
@@ -243,10 +262,7 @@ class SearchViewSet(viewsets.ModelViewSet):
             # Save multiple images
             images = request.FILES.getlist('images')
             imgPath = request.POST['imgfilename']
-
-            # request.data['personid'] = pid
-            # request.data['modelid'] = request.POST['modelid']
-
+            
 
             ######## similarity search one-by-one ###########
             img_results = []

@@ -206,7 +206,7 @@ class RegisterViewSet(viewsets.ModelViewSet):
                     'status': "SUCCESS"
                 }, status=http_codes[200])
             else:
-                return Response({'message': f"삭제할 사용자 {pid}의 정보가 존재하지 않습니다", 'status': "FAIL"}, status=status.HTTP_404_NOT_FOUND)
+                return Response({'message': f"삭제할 사용자 {pid}의 정보가 존재하지 않습니다", 'status': "FAIL"}, status=http_codes[404])
 
         except Vecmanager.DoesNotExist as dne:
             logger.error(dne)
@@ -314,6 +314,34 @@ class SearchViewSet(viewsets.ModelViewSet):
         except MultiValueDictKeyError as me:
             logger.error(me)
             return Response({"message": f"API 입력값 중에 {me}이 누락되었습니다."}, status=http_codes[400])
+
+
+    def partial_update(self, request, *args, **kwargs):
+        personid = kwargs.get('personid')
+        try:
+            instance = self.get_object()
+        except Searchmanager.DoesNotExist:
+            return Response(
+                {"message": f"personid '{personid}'의 안면 검색 기록이 없습니다. 따라서 평가를 내릴 수 없습니다.", "status": "NOT_FOUND"},
+                status=http_codes[404]
+            )
+
+        # Only update 'correct' field if it's in the request
+        if 'correct' in request.data:
+            instance.correct = request.data['correct']
+            instance.save()
+            return Response(
+                {
+                    "message": f"PersonID {personid}의 안면인식 결과의 평가를 성공적으로 업데이트 했습니다.",
+                    "status": "SUCCESS"
+                },
+                status=http_codes[200]
+            )
+
+        return Response(
+            {"message": "'correct' 필드가 요청에 포함되어야 합니다.", "status": "FAIL"},
+            status=http_codes[400]
+        )
 
 
     

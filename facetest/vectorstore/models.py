@@ -23,12 +23,14 @@ class VecImage(models.Model):
 
 
 class Searchmanager(models.Model):
-    user = models.CharField(max_length=200, verbose_name="Institution")   
-    personid = models.CharField(max_length=200, verbose_name="User name")
+    user = models.CharField(max_length=200, verbose_name="Institution") 
+    searchid = models.CharField(max_length=200, verbose_name="Search ID")
     embedvec = VectorField(dimensions=512, help_text="Vector embeddings(Facenet512)", verbose_name="Embedding Vector of User")
     imgfilename = models.CharField(max_length=200, verbose_name = "User image file")
     qimage = models.ImageField(null=True, verbose_name = "Image to identify")
-    modelid = models.CharField(max_length=30, verbose_name = "AI model")    
+    modelid = models.CharField(max_length=30, verbose_name = "AI model")
+    top1pid = models.CharField(null=True, max_length=200, verbose_name="ID of Top 1 similar")
+    top2pid = models.CharField(null=True, max_length=200, verbose_name="ID of Top 2 similar")
     sim_imgfile1 = models.CharField(max_length=200, null=True, verbose_name = "Name of Top 1 similar image")
     sim_imgfile2 = models.CharField(max_length=200, null=True, verbose_name = "Name of Top 2 similar image")
     sim_image1 = models.ImageField(null=True, verbose_name = "Top 1 similar image")

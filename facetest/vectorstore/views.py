@@ -211,7 +211,7 @@ class RegisterViewSet(viewsets.ModelViewSet):
             vectorid = record.vectorid
             imgpath = os.path.join(settings.MEDIA_ROOT, 'uploads', record.imgfilename)
             os.remove(imgpath)
-            print(f"image file {record.imgfilename} deleted")
+            logger.debug(f"image file {record.imgfilename} deleted")
             record.delete()
 
             # Optionally remove from FAISS index
@@ -241,27 +241,33 @@ class RegisterViewSet(viewsets.ModelViewSet):
                 'status': "FAIL"
             }, status=http_codes[400])
 
+        except FileNotFoundError as fe:
+            logger.error(fe)
+            return Response({
+                    'message': f"삭제할 사용자 {personid}의 이미지 파일이 존재하지 않습니다",
+                    'status': "FAIL"
+                }, status=http_codes[404])
+
 
 
 class SearchViewSet(viewsets.ModelViewSet):
     queryset = Searchmanager.objects.all()
     serializer_class = SearchSerializer
-    lookup_field = 'personid'
+    lookup_field = 'searchid'
 
     def create(self, request, *args, **kwargs):
 
         try:
             request.data._mutable = True
-            username = request.POST['user']
-            pid = request.POST['personid']
+            username = request.POST['user'] 
+            sid = request.POST['searchid']
             vstore, _ = FAISS_server_start(username)
             representation = request.POST['embedvec']        
             represent_list = literal_eval(representation)            
-            # request.data['embedvec'] = represent_list[0]
 
             # Save multiple images
             images = request.FILES.getlist('images')
-            imgPath = request.POST['imgfilename']
+            imgPath = request.POST['imgfilename']            
             
 
             ######## similarity search one-by-one ###########
@@ -290,7 +296,9 @@ class SearchViewSet(viewsets.ModelViewSet):
 
             data = {
                 "user": username,
-                "personid": pid,
+                "searchid" : sid,
+                "top1pid": result2['top 1 id'],
+                "top2pid": result2['top 2 id'],
                 "imgfilename": imgPath,
                 "embedvec" : represent_list[0],
                 'modelid' : request.POST['modelid'],
@@ -303,7 +311,10 @@ class SearchViewSet(viewsets.ModelViewSet):
             
             serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
-            serializer.save()           
+            search_obj = serializer.save()    
+
+            for img in images:
+                SearchImage.objects.create(searchmanager=search_obj, image=img)
 
             # Path to your image file under MEDIA_ROOT
             imgpath1 = os.path.join(settings.MEDIA_ROOT, 'uploads', entry1.imgfilename)
@@ -326,6 +337,7 @@ class SearchViewSet(viewsets.ModelViewSet):
                 sm.save()
 
             return Response(result2, status=http_codes[code2])
+            
 
         except MultiValueDictKeyError as me:
             logger.error(me)
@@ -333,12 +345,12 @@ class SearchViewSet(viewsets.ModelViewSet):
 
 
     def partial_update(self, request, *args, **kwargs):
-        personid = kwargs.get('personid')
+        searchid = kwargs.get('searchid')
         try:
             instance = self.get_object()
         except Searchmanager.DoesNotExist:
             return Response(
-                {"message": f"personid '{personid}'의 안면 검색 기록이 없습니다. 따라서 평가를 내릴 수 없습니다.", "status": "NOT_FOUND"},
+                {"message": f"Search ID '{searchid}'의 안면 검색 기록이 없습니다. 따라서 평가를 내릴 수 없습니다.", "status": "NOT_FOUND"},
                 status=http_codes[404]
             )
 
@@ -348,7 +360,7 @@ class SearchViewSet(viewsets.ModelViewSet):
             instance.save()
             return Response(
                 {
-                    "message": f"PersonID {personid}의 안면인식 결과의 평가를 성공적으로 업데이트 했습니다.",
+                    "message": f"Search ID {searchid}의 안면인식 결과의 평가를 성공적으로 업데이트 했습니다.",
                     "status": "SUCCESS"
                 },
                 status=http_codes[200]

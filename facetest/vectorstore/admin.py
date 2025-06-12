@@ -44,11 +44,11 @@ class SearchImageInline(admin.TabularInline):
 @admin.register(Searchmanager)
 class SearchmanagerAdmin(admin.ModelAdmin):
     list_display = (
-        'user', 'personid', 'imgfilename', 'image_thumb',  
-        'identify', 'correct', 'sim_image1_thumb', 'distance1', 'sim_image2_thumb', 'distance2',  'modelid', 'created_at'
+        'user', 'searchid', 'imgfilename', 'image_thumb',  
+        'identify', 'correct', 'top1pid', 'sim_image1_thumb', 'distance1', 'top2pid', 'sim_image2_thumb', 'distance2',  'modelid', 'sim_imgfile1', 'sim_imgfile2', 'created_at'
     )
     list_filter = ('user', 'identify', 'created_at')
-    search_fields = ('personid', 'imgfilename', 'modelid')
+    search_fields = ('searchid', 'imgfilename', 'modelid')
     inlines = [SearchImageInline]
     readonly_fields = ['image_thumb', 'sim_image1_thumb', 'sim_image2_thumb']
 

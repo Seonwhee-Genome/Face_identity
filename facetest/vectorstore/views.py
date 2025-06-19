@@ -346,9 +346,11 @@ class SearchViewSet(viewsets.ModelViewSet):
 
     def partial_update(self, request, *args, **kwargs):
         searchid = kwargs.get('searchid')
-        try:
-            instance = self.get_object()
-        except Searchmanager.DoesNotExist:
+
+        # Get all instances that match the searchid
+        instances = Searchmanager.objects.filter(searchid=searchid)
+
+        if not instances.exists():
             return Response(
                 {"message": f"Search ID '{searchid}'의 안면 검색 기록이 없습니다. 따라서 평가를 내릴 수 없습니다.", "status": "NOT_FOUND"},
                 status=http_codes[404]
@@ -356,8 +358,7 @@ class SearchViewSet(viewsets.ModelViewSet):
 
         # Only update 'correct' field if it's in the request
         if 'correct' in request.data:
-            instance.correct = request.data['correct']
-            instance.save()
+            instances.update(correct=request.data['correct'])  # Bulk update
             return Response(
                 {
                     "message": f"Search ID {searchid}의 안면인식 결과의 평가를 성공적으로 업데이트 했습니다.",
@@ -365,11 +366,10 @@ class SearchViewSet(viewsets.ModelViewSet):
                 },
                 status=http_codes[200]
             )
-
         return Response(
             {"message": "'correct' 필드가 요청에 포함되어야 합니다.", "status": "FAIL"},
             status=http_codes[400]
-        )
+            )
 
 
     

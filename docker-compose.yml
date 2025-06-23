@@ -1,0 +1,24 @@
+version: "3.8"
+services:
+  facenet:
+    image: seonwhee0docker/facenet:v0.2
+    command: uwsgi --chdir=/data/Face_identity/faceserve/ --module=faceserve.wsgi:application --http :5000 --processes=3 --max-requests=5000 --harakiri=120
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 2
+      restart_policy:
+        condition: on-failure
+    networks:
+      - webnet
+    ports:
+      - "5001:5000"  # Forward host port 5001 to container port 5000
+    environment:
+      DJANGO_SETTINGS_MODULE: "faceserve.settings"
+    volumes:
+      - /data:/data
+    working_dir: /data/Face_identity/faceserve
+
+networks:
+  webnet:
+    driver: overlay

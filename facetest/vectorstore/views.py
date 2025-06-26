@@ -20,6 +20,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from django.core.files import File
 from django.db.models import Max
+from distutils.util import strtobool
 from .faiss_vectorstore import FAISS_FlatL2
 
 logging.basicConfig(
@@ -47,6 +48,25 @@ def FAISS_server_start(username: str):
     
     return vstore, f'faissDB-{username}.index'    
 
+
+def move_uploaded_file(file_field, target_subdir):
+    """
+    Moves an uploaded file from its current location to MEDIA_ROOT/target_subdir/
+    and returns the new relative path.
+    """
+    original_path = file_field.path # e.g. /data/Face_identity/testdir/uploads/IMG_2238.jpg
+    filename = os.path.basename(original_path)
+    new_dir = os.path.join(settings.MEDIA_ROOT, target_subdir)
+    os.makedirs(new_dir, exist_ok=True)
+
+    new_path = os.path.join(new_dir, filename) # e.g. /data/Face_identity/testdir/seonwhee27/query/IMG_2238.jpg
+    shutil.move(original_path, new_path)    
+
+    # Return relative path to store in ImageField (relative to MEDIA_ROOT)
+    relative_path = os.path.join(target_subdir, filename) # e.g. seonwhee27/query/IMG_2238.jpg
+
+    return relative_path
+    
 
 class RegisterViewSet(viewsets.ModelViewSet):
     queryset = Vecmanager.objects.all()
@@ -77,7 +97,11 @@ class RegisterViewSet(viewsets.ModelViewSet):
         # Save multiple images
         images = request.FILES.getlist('images')
         for img in images:
-            VecImage.objects.create(vecmanager=vec_obj, image=img)
+            vi = VecImage.objects.create(vecmanager=vec_obj, image=img)
+            new_relative_path = move_uploaded_file(vi.image, pid)
+            # Update the ImageField to the new path
+            vi.image.name = new_relative_path
+            vi.save()
             
         # 🔸 Add to vector index
         vector = np.array(represent_list, dtype=np.float32).reshape(1, -1)
@@ -105,7 +129,8 @@ class RegisterViewSet(viewsets.ModelViewSet):
                 'imgfilename' : entry.imgfilename,
                 'modelid' : entry.modelid,
                 'created_at': entry.created_at.isoformat(),
-                'current vectorids': vstore.all_ids
+                'current vectorids': vstore.all_ids,
+                'blurriness': entry.blurriness
             })
             del(vstore)
             
@@ -209,7 +234,7 @@ class RegisterViewSet(viewsets.ModelViewSet):
             record = Vecmanager.objects.get(personid=personid)
             vstore, FAISS_outfile = FAISS_server_start(record.user)
             vectorid = record.vectorid
-            imgpath = os.path.join(settings.MEDIA_ROOT, 'uploads', record.imgfilename)
+            imgpath = os.path.join(settings.MEDIA_ROOT, record.personid, record.imgfilename)
             os.remove(imgpath)
             logger.debug(f"image file {record.imgfilename} deleted")
             record.delete()
@@ -307,6 +332,7 @@ class SearchViewSet(viewsets.ModelViewSet):
                 'distance1' : result2['top 1 distance'],
                 'distance2' : result2['top 2 distance'],
                 'identify' : True if result2['status'] == 'IDENTIFIED' else False,
+                'blurriness' : request.POST['blurriness']
             }
             
             serializer = self.get_serializer(data=data)
@@ -314,12 +340,17 @@ class SearchViewSet(viewsets.ModelViewSet):
             search_obj = serializer.save()    
 
             for img in images:
-                SearchImage.objects.create(searchmanager=search_obj, image=img)
+                si = SearchImage.objects.create(searchmanager=search_obj, image=img)
+                query_path = "%s/query" %(result2['top 1 id'])
+                new_relative_path = move_uploaded_file(si.image, query_path)
+                # Update the ImageField to the new path
+                si.image.name = new_relative_path
+                si.save()
+                img_query = os.path.join(settings.MEDIA_ROOT, query_path, imgPath)
 
             # Path to your image file under MEDIA_ROOT
-            imgpath1 = os.path.join(settings.MEDIA_ROOT, 'uploads', entry1.imgfilename)
-            imgpath2 = os.path.join(settings.MEDIA_ROOT, 'uploads', entry2.imgfilename)
-            img_query = os.path.join(settings.MEDIA_ROOT, 'uploads', imgPath)
+            imgpath1 = os.path.join(settings.MEDIA_ROOT, entry1.personid, entry1.imgfilename)
+            imgpath2 = os.path.join(settings.MEDIA_ROOT, entry2.personid, entry2.imgfilename)
 
             sm = Searchmanager.objects.last()
             with open(imgpath1, 'rb') as f:
@@ -343,13 +374,17 @@ class SearchViewSet(viewsets.ModelViewSet):
             logger.error(me)
             return Response({"message": f"API 입력값 중에 {me}이 누락되었습니다."}, status=http_codes[400])
 
+        except KeyError as ke:
+            logger.error(ke)
+            return Response({'message': '존재하지 않는 데이터베이스상에서 안면 정보를 찾을 수 없습니다. 지자체 user가 등록되어 있는지 확인해주세요', 'status': 'FAIL'}, status=http_codes[400])
+
 
     def partial_update(self, request, *args, **kwargs):
         searchid = kwargs.get('searchid')
 
         # Get all instances that match the searchid
         instances = Searchmanager.objects.filter(searchid=searchid)
-
+        
         if not instances.exists():
             return Response(
                 {"message": f"Search ID '{searchid}'의 안면 검색 기록이 없습니다. 따라서 평가를 내릴 수 없습니다.", "status": "NOT_FOUND"},
@@ -358,7 +393,18 @@ class SearchViewSet(viewsets.ModelViewSet):
 
         # Only update 'correct' field if it's in the request
         if 'correct' in request.data:
+            try:
+                is_correct = bool(strtobool(request.data['correct']))
+                result = 'TP' if is_correct else 'FP'
+            except ValueError:
+                result = 'FP'  # fallback or raise error if invalid input
+                
             instances.update(correct=request.data['correct'])  # Bulk update
+            update_path = os.path.join(settings.MEDIA_ROOT, instances.first().top1pid, result)            
+            os.makedirs(update_path, exist_ok=True)
+            query_path = os.path.join(instances.first().top1pid, 'query')
+            original_path = os.path.join(settings.MEDIA_ROOT, query_path, instances.first().imgfilename)            
+            shutil.copy(original_path, update_path)
             return Response(
                 {
                     "message": f"Search ID {searchid}의 안면인식 결과의 평가를 성공적으로 업데이트 했습니다.",

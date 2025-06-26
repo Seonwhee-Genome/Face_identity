@@ -3,12 +3,15 @@ from django.db import models
 # Create your models here.
 from pgvector.django import VectorField
 
+
+
 class Vecmanager(models.Model):    
     user = models.CharField(max_length=200)
     personid = models.CharField(max_length=200, unique=True)
     vectorid = models.IntegerField(blank=True, null=True, unique=True)
     embedvec = VectorField(dimensions=512, help_text="Vector embeddings(Facenet512)")
     imgfilename = models.CharField(max_length=200, unique=True)
+    blurriness = models.FloatField(null=True)
     modelid = models.CharField(max_length=30)
     created_at = models.DateTimeField(auto_now_add=True)
     
@@ -17,7 +20,7 @@ class Vecmanager(models.Model):
         
 
 class VecImage(models.Model):
-    vecmanager = models.ForeignKey(Vecmanager, related_name='images', on_delete=models.CASCADE)
+    vecmanager = models.ForeignKey(Vecmanager, related_name='images', on_delete=models.CASCADE)    
     image = models.ImageField(upload_to='uploads/')
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
@@ -39,6 +42,7 @@ class Searchmanager(models.Model):
     correct = models.BooleanField(null=True, verbose_name = "Correctly Identified")
     distance1 = models.FloatField(null=True, verbose_name = "Top 1 distance")
     distance2 = models.FloatField(null=True, verbose_name = "Top 2 distance")
+    blurriness = models.FloatField(null=True, verbose_name = "Blurriness")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name = "Datetime")
 
     def __str__(self):
@@ -59,12 +63,12 @@ class Searchmanager(models.Model):
     def sim_image2_thumb(self):
         if self.sim_image2:
             return format_html('<img src="{}" width="100" height="100" />', self.sim_image2.url)
-        return "(No image)"
-        
+        return "(No image)"        
         
 
 class SearchImage(models.Model):
     searchmanager = models.ForeignKey(Searchmanager, related_name='images', on_delete=models.CASCADE)
+    
     image = models.ImageField(upload_to='uploads/')
     uploaded_at = models.DateTimeField(auto_now_add=True)
 

@@ -352,6 +352,11 @@ class SearchViewSet(viewsets.ModelViewSet):
             imgpath1 = os.path.join(settings.MEDIA_ROOT, entry1.personid, entry1.imgfilename)
             imgpath2 = os.path.join(settings.MEDIA_ROOT, entry2.personid, entry2.imgfilename)
 
+            if not os.path.exists(imgpath1):                
+                shutil.copy(os.path.join(settings.MEDIA_ROOT, 'uploads', entry1.imgfilename), os.path.join(settings.MEDIA_ROOT, entry1.personid))                
+            if not os.path.exists(imgpath2):
+                shutil.copy(os.path.join(settings.MEDIA_ROOT, 'uploads', entry2.imgfilename), os.path.join(settings.MEDIA_ROOT, entry2.personid))
+
             sm = Searchmanager.objects.last()
             with open(imgpath1, 'rb') as f:
                 # Save file with a relative name to avoid SuspiciousFileOperation exception by Django

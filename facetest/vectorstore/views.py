@@ -21,7 +21,7 @@ from rest_framework.decorators import action
 from django.core.files import File
 from django.db.models import Max
 from distutils.util import strtobool
-from .faiss_vectorstore import FAISS_FlatL2
+from .faiss_vectorstore import FAISS_InnerProd
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)s:%(message)s',
@@ -38,7 +38,7 @@ http_codes = {500: status.HTTP_500_INTERNAL_SERVER_ERROR,
 THRESHOLD = 5.0
 
 def FAISS_server_start(username: str):
-    vstore = FAISS_FlatL2(512)
+    vstore = FAISS_InnerProd(512)
     if os.path.exists(os.path.join(vstore.root, f'faissDB-{username}.index')):
         vstore.load_index(f'faissDB-{username}.index')
         logger.debug(f'지자체 {username}의 FAISS DB load')
@@ -317,7 +317,8 @@ class SearchViewSet(viewsets.ModelViewSet):
             logger.debug(result2)
 
             entry1 = Vecmanager.objects.get(personid=result2['top 1 id'])
-            entry2 = Vecmanager.objects.get(personid=result2['top 2 id'])            
+            entry2 = Vecmanager.objects.get(personid=result2['top 2 id'])  
+
 
             data = {
                 "user": username,

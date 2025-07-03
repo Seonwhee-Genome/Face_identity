@@ -3,6 +3,7 @@ import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D, Input
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import ModelCheckpoint
 from deepface.models.facial_recognition import Facenet
 
 os.environ["DEEPFACE_HOME"] = "/home/work/Face/"
@@ -41,21 +42,35 @@ def load_dataset(data_dir, BATCH_SIZE=32, IMG_SIZE=(160,160), mode="categorical"
 
 
 
-def train(epochs=10):
+def train(epochs=10, nc=86145, batch_size=64, checkpoint_path="/home/work/Face/arcface-tf2/checkpoints5/cp-{epoch:04d}.ckpt"):
     facenet512 = Facenet.FaceNet512dClient()
     
     print("load dataset")
-    train_dataset = load_dataset("/home/work/Face/train/imgs_merged2")
+    train_dataset = load_dataset("/home/work/Face/train/imgs_merged2", BATCH_SIZE=batch_size)
     
     print("initialize Facenet 512")
 
-    model = load_and_add_finetune_layers(86145)
+    model = load_and_add_finetune_layers(nc)
     
     print("model compile")
+    
+    # Include the epoch in the file name (uses `str.format`)    
+    checkpoint_dir = os.path.dirname(checkpoint_path)
+    
+    # Create a callback that saves the model's weights every 5 epochs
+    cp_callback = ModelCheckpoint(
+        filepath=checkpoint_path, 
+        verbose=1, 
+        save_weights_only=True,
+        save_freq=5*batch_size)    
 
     # Compile the model
     model.compile(optimizer=Adam(learning_rate=1e-4),  # using a small learning rate
                   loss='categorical_crossentropy',
                   metrics=['accuracy'])
     
-    model.fit(train_dataset, epochs=epochs)
+    model.fit(train_dataset, epochs=epochs, callbacks=[cp_callback], verbose=0)
+
+    
+if __name__=="__main__":
+    train(epochs=100)

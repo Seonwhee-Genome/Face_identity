@@ -26,8 +26,8 @@ LR_DECAY_EPOCHS     = 100
 LR_DECAY_FACTOR     = 1.0
 WEIGHT_DECAY        = 0.0
 KEEP_PROB           = 1.0
-LOG_DIR             = pathlib.Path("~/logs/facenet_tf2").expanduser()
-MODEL_DIR           = pathlib.Path("~/models/facenet_tf2").expanduser()
+LOG_DIR             = pathlib.Path("~/Face/logs/facenet_tf2").expanduser()
+MODEL_DIR           = pathlib.Path("~/Face/models/facenet_tf2").expanduser()
 GPU_MEM_FRACTION    = 1.0
 SEED                = 666
 random.seed(SEED); np.random.seed(SEED); tf.keras.utils.set_random_seed(SEED)
@@ -65,18 +65,14 @@ def train(epochs=10, nc=86145, batch_size=8, checkpoint_path="/home/work/Face/ar
         staircase=True)
     optimizer = tf.keras.optimizers.Adagrad(learning_rate=lr_schedule)
     
-    DATA_ROOT = "/home/work/Face/train/imgs_merged2"
-    filelists = make_filelists(DATA_ROOT)
-
-    ds = triplet_dataset(filelists, model)
+    
     
     print("model compile")
 
     # Compile the model
 #     loss_obj   = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
-    model.compile(optimizer=Adam(learning_rate=1e-4),  # using a small learning rate
-                  loss=triplet_loss,
-                  metrics=["sparse_categorical_accuracy"])
+    model.compile(optimizer=optimizer,  # using a small learning rate
+                  loss=triplet_loss)
     
     # Logging / checkpoint directory setup
     timestamp   = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -91,6 +87,10 @@ def train(epochs=10, nc=86145, batch_size=8, checkpoint_path="/home/work/Face/ar
             str(model_path / "ckpt_{epoch:04d}.weights.h5"),
             save_weights_only=True, save_best_only=False, verbose=1)
     ]
+    DATA_ROOT = "/home/work/Face/train/imgs_merged2"
+    filelists = make_filelists(DATA_ROOT)
+
+    ds = triplet_dataset(filelists, model)
     
     # Because dataset is infinite, we set steps_per_epoch = epoch_size
     model.fit(ds,

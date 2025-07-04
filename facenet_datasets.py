@@ -8,7 +8,7 @@ IMG_SIZE            = 160
 PEOPLE_PER_BATCH    = 45
 IMAGES_PER_PERSON   = 40            # (= K in “PK‑sampling” literature)
 BATCH_SIZE          = 90 
-
+ALPHA               = 0.2 
 
 def make_filelists(root):
     """Return dict[class_id] -> list[paths]."""

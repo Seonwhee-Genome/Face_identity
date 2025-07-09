@@ -8,6 +8,7 @@ import logging
 import datetime, re
 import numpy as np
 from ast import literal_eval
+from time import time
 from rest_framework.response import Response
 from rest_framework import status, permissions
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
@@ -46,7 +47,15 @@ def FAISS_server_start(username: str):
         vstore.create_index()
         logger.debug(f'지자체 {username}의 FAISS DB 생성')
     
-    return vstore, f'faissDB-{username}.index'    
+    return vstore, f'faissDB-{username}.index'
+
+
+def timeit_to_file(start_time, log_file="/data/face_identity/timelog.txt"):
+    end_time = time()
+    log_line = f"실행 시간: {end_time - start_time:.4f}초"
+    print(log_line)
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(f"{end_time - start_time:.4f}\n")
 
 
 def move_uploaded_file(file_field, target_subdir):
@@ -281,6 +290,7 @@ class SearchViewSet(viewsets.ModelViewSet):
     lookup_field = 'searchid'
 
     def create(self, request, *args, **kwargs):
+        start_time = time()
 
         try:
             request.data._mutable = True
@@ -372,16 +382,25 @@ class SearchViewSet(viewsets.ModelViewSet):
             with open(img_query, 'rb') as f:           
                 sm.qimage.save('auto_test3.jpg', File(f))
                 sm.save()
+             
+            if topk > 1:
+                for i in range(2, topk+1):
+                    result2.pop(f"top {i} id")
+                    result2.pop(f"top {i} distance")
+             
+            timeit_to_file(start_time)
 
             return Response(result2, status=http_codes[code2])
             
 
         except MultiValueDictKeyError as me:
             logger.error(me)
+            timeit_to_file(start_time)
             return Response({"message": f"API 입력값 중에 {me}이 누락되었습니다."}, status=http_codes[400])
 
         except KeyError as ke:
             logger.error(ke)
+            timeit_to_file(start_time)
             return Response({'message': '존재하지 않는 데이터베이스상에서 안면 정보를 찾을 수 없습니다. 지자체 user가 등록되어 있는지 확인해주세요', 'status': 'FAIL'}, status=http_codes[400])
 
 

@@ -34,15 +34,10 @@ def sample_people(filelists, P=PEOPLE_PER_BATCH, K=IMAGES_PER_PERSON):
 
 def decode_and_preprocess(filename, random_crop=False, random_flip=False):
     image = tf.io.read_file(filename)
-    image = tf.image.decode_image(image, channels=3)
-    image.set_shape([None, None, 3])  # Helps shape inference
-
-    # Resize forcibly to IMG_SIZE
-    image = tf.image.resize(image, [IMG_SIZE, IMG_SIZE])
-
+    image = tf.image.decode_jpeg(image, channels=3)
+    image = tf.image.resize(image, [160, 160])
     if random_flip:
         image = tf.image.random_flip_left_right(image)
-
     image = tf.image.per_image_standardization(image)
     return image
 
@@ -55,7 +50,7 @@ def triplet_dataset(filelists, embed_model):
     then images are loaded via tf.data parallelism.
     """
     AUTOTUNE = tf.data.AUTOTUNE
-    
+
     def generator():
         while True:
             # 1) PK sample
@@ -63,24 +58,29 @@ def triplet_dataset(filelists, embed_model):
             # 2) run forward pass to compute embeddings
             imgs = tf.stack([decode_and_preprocess(p, False, False)
                              for p in image_paths])
-            emb = embed_model(imgs, training=False)      # global var below
+            emb = embed_model(imgs, training=False)
             emb = tf.math.l2_normalize(emb, axis=1).numpy()
             # 3) numpy hard‑negative mining
             trips, _, _ = select_triplets_numpy(
                 emb, per_class, image_paths, PEOPLE_PER_BATCH, ALPHA)
+            if len(trips) == 0:
+                continue
             random.shuffle(trips)
             for a, p, n in trips:
-                for path in (a, p, n):      #  <-- emit each path separately
+                for path in (a, p, n):
                     yield path
 
     ds = tf.data.Dataset.from_generator(
         generator,
         output_signature=tf.TensorSpec(shape=(), dtype=tf.string)
     )
+
     ds = ds.map(decode_and_preprocess, num_parallel_calls=AUTOTUNE)
-    ds = ds.batch(BATCH_SIZE)                          # (B, H, W, C)
+    
+    ds = ds.batch(BATCH_SIZE, drop_remainder=True)
+    # 👇 assign dummy label (for Keras model.fit compatibility)
     ds = ds.map(lambda x: (x, tf.zeros((tf.shape(x)[0], 1))),
-            num_parallel_calls=AUTOTUNE)
+                num_parallel_calls=AUTOTUNE)
 
     return ds
 

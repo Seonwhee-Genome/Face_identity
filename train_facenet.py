@@ -13,6 +13,7 @@ from facenet_datasets import make_filelists, triplet_dataset
 
 
 os.environ["DEEPFACE_HOME"] = "/home/work/Face/"
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
 FACENET512_WEIGHTS = (
     "https://github.com/serengil/deepface_models/releases/download/v1.0/facenet512_weights.h5"

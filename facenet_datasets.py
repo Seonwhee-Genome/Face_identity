@@ -5,8 +5,8 @@ from functools import partial
 
 
 IMG_SIZE            = 160
-PEOPLE_PER_BATCH    = 45
-IMAGES_PER_PERSON   = 40            # (= K in “PK‑sampling” literature)
+PEOPLE_PER_BATCH    = 30
+IMAGES_PER_PERSON   = 3            # (= K in “PK‑sampling” literature)
 BATCH_SIZE          = 90 
 ALPHA               = 0.2 
 

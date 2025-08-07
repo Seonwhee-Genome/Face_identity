@@ -20,6 +20,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from django.db.models import Max
 from uuid import UUID
+from facenet.models import AIarchive
 from .faiss_vectorstore import FAISS_FlatL2
 
 logging.basicConfig(
@@ -70,6 +71,8 @@ class RegisterViewSet(viewsets.ModelViewSet):
 
         request.data._mutable = False
 
+        
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save(user=username)
@@ -79,7 +82,22 @@ class RegisterViewSet(viewsets.ModelViewSet):
         vstore.add_vec_to_index(vector, int(next_vectorid))
         vstore.save_index(FAISS_outfile)
 
-        return Response({'message': f"사용자 {uuid}의 정보가 등록되었습니다", 'status': "SUCCESS"}, status=http_codes[201])
+        model_ver = request.data['model_ver']
+        logger.debug(f"model_version : {model_ver}")
+        latest_model = AIarchive.objects.filter(version=model_ver).last()
+        print(latest_model)
+        if latest_model:
+            model_id = latest_model.modelid
+            # Optional: also retrieve other info if needed
+            model_name = latest_model.modelname
+            model_version = latest_model.version
+        else:
+            model_id = "Unknown"  # or handle case where no models exist
+        logger.debug("model_id : %s"%(model_id))
+        
+
+
+        return Response({'message': f"사용자 {uuid}의 정보가 등록되었습니다", 'status': "SUCCESS", 'model_ver': model_id}, status=http_codes[201])
         
 
     @action(detail=False, methods=['get'], url_path='dump-db')
@@ -98,7 +116,8 @@ class RegisterViewSet(viewsets.ModelViewSet):
                 'vectorid': entry.vectorid,
                 'user': entry.user,
                 'created_at': entry.created_at.isoformat(),
-                'current vectorids': vstore.all_ids
+                'current vectorids': vstore.all_ids,
+                'embed model ver' : entry.model_ver 
             })
             del(vstore)
             
@@ -132,20 +151,34 @@ class RegisterViewSet(viewsets.ModelViewSet):
 
             if not isinstance(embedvec, list) or len(embedvec) != 512:
                 return Response({"message": "embedvec은 512차원의 리스트여야 합니다.", "status": "FAIL"},
-                                status=http_codes[400])
+                                status=http_codes[400])            
 
-            # Update record
+            # Update record            
             record.embedvec = embedvec
+            model_ver = request.data.get("model_ver", None)
+            latest_model = AIarchive.objects.filter(version=model_ver).last()
+            if latest_model:
+                model_id = latest_model.modelid
+                model_name = latest_model.modelname
+                model_version = latest_model.version
+                record.model_ver = model_ver
+            else:
+                model_id = "Unknown"  # or handle case where no models exist
             record.save()
+            logger.debug("model_id : %s"%(model_id))
+            
+            logger.debug(f"model_version : {model_ver}")
 
             # Update FAISS index
             vector = np.array(embedvec, dtype=np.float32).reshape(1, -1)            
             vstore.add_vec_to_index(vector, int(record.vectorid))
-            vstore.save_index(FAISS_outfile)
+            vstore.save_index(FAISS_outfile)            
+            
 
             return Response({
                 "message": f"UUID {uuid_str}의 임베딩 벡터가 성공적으로 업데이트되었습니다.",
-                "status": "SUCCESS"
+                "status": "SUCCESS",
+                "model_ver" : model_id
             })
 
         except Vecmanager.DoesNotExist as dne:
@@ -172,26 +205,40 @@ class RegisterViewSet(viewsets.ModelViewSet):
                 return Response({"message": "잘못된 UUID 형식입니다.", "status": "FAIL"},
                                 status=http_codes[400])
 
+
+            model_ver = request.data.get("model_ver", None)
+            logger.debug(f"model_version : {model_ver}")
+            latest_model = AIarchive.objects.filter(version=model_ver).last()
+            
+            if latest_model:
+                model_id = latest_model.modelid
+                model_name = latest_model.modelname
+                model_version = latest_model.version
+            else:
+                model_id = "Unknown"  # or handle case where no models exist
+            
+
             user = request.data.get("user", "AnonymousUser")            
             embedvec_input = request.data.get("embedvec", None)
+            
 
             vstore, FAISS_outfile = FAISS_server_start(user)
 
             if embedvec_input is None:
-                return Response({"message": "embedvec 필드는 필수입니다.", "status": "FAIL"},
+                return Response({"message": "embedvec 필드는 필수입니다.", "status": "FAIL", "model_ver" : model_id},
                                 status=http_codes[400])
 
             if isinstance(embedvec_input, str):
                 try:
                     embedvec = literal_eval(embedvec_input)
                 except Exception:
-                    return Response({"message": "embedvec 문자열을 리스트로 변환할 수 없습니다.", "status": "FAIL"},
+                    return Response({"message": "embedvec 문자열을 리스트로 변환할 수 없습니다.", "status": "FAIL", "model_ver" : model_id},
                                     status=http_codes[400])
             else:
                 embedvec = embedvec_input
 
             if not isinstance(embedvec, list) or len(embedvec) != 512:
-                return Response({"message": "embedvec은 512차원의 리스트여야 합니다.", "status": "FAIL"},
+                return Response({"message": "embedvec은 512차원의 리스트여야 합니다.", "status": "FAIL", "model_ver" : model_id},
                                 status=http_codes[400])
 
             vector = np.array(embedvec, dtype=np.float32).reshape(1, -1)
@@ -201,6 +248,8 @@ class RegisterViewSet(viewsets.ModelViewSet):
                 record = Vecmanager.objects.get(personid=uuid_obj)
                 record.embedvec = embedvec
                 record.user = user
+                if latest_model:
+                    record.model_ver = model_ver
                 record.save()
                 
                 vstore.add_vec_to_index(vector, int(record.vectorid))
@@ -227,7 +276,8 @@ class RegisterViewSet(viewsets.ModelViewSet):
             return Response({
                 "message": f"PersonID {uuid_str} 로 레코드를 성공적으로 {action_type} 했습니다.",
                 "personid": record.personid,
-                "status": "SUCCESS"
+                "status": "SUCCESS",
+                "model_ver" : model_id
             }, status=http_codes[201])
 
         except Exception as e:
@@ -284,10 +334,13 @@ class SearchViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
 
         try:
+            request.data._mutable = True
             username = request.POST['user']
             vstore, _ = FAISS_server_start(username)
             representation = request.POST['embedvec']        
             represent_list = literal_eval(representation) 
+
+            request.data['embedvec'] = represent_list[0]
 
             ######## similarity search one-by-one ###########
             results = []
@@ -297,6 +350,7 @@ class SearchViewSet(viewsets.ModelViewSet):
                 results.append(result)
 
             ####### similarity search at once #############
+            logger.debug(f"model_version : {request.POST['model_ver']}")
 
             vectors = np.array(represent_list, dtype=np.float32)
             logger.debug("Try to do similarity search")
@@ -305,6 +359,24 @@ class SearchViewSet(viewsets.ModelViewSet):
             logger.debug(results)
             logger.debug("종합 유사도")
             logger.debug(result2)
+
+            model_ver = request.data.get("model_ver", None)
+            logger.debug(f"model_version : {model_ver}")
+            latest_model = AIarchive.objects.filter(version=model_ver).last()
+            if latest_model:
+                model_id = latest_model.modelid
+                model_name = latest_model.modelname
+                model_version = latest_model.version
+            else:
+                model_id = "Unknown"  # or handle case where no models exist    
+            logger.debug("model_id : %s"%(model_id))
+            
+            result2['model_ver'] = model_id
+            
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save(user=username)
+
 
             return Response(result2, status=http_codes[code2])
 

@@ -35,7 +35,7 @@ http_codes = {500: status.HTTP_500_INTERNAL_SERVER_ERROR,
               400: status.HTTP_400_BAD_REQUEST,
               201: status.HTTP_201_CREATED,
               200: status.HTTP_200_OK}
-THRESHOLD = 5.0
+THRESHOLD = 0.5
 
 def FAISS_server_start(username: str):
     vstore = FAISS_FlatL2(512)
@@ -71,7 +71,22 @@ class RegisterViewSet(viewsets.ModelViewSet):
 
         request.data._mutable = False
 
-        
+        try:
+            model_ver = request.data['model_ver']
+            logger.debug(f"model_version : {model_ver}")
+            latest_model = AIarchive.objects.filter(version=model_ver).last()
+            print(latest_model)
+            if latest_model:
+                model_id = latest_model.modelid
+                # Optional: also retrieve other info if needed
+                model_name = latest_model.modelname
+                model_version = latest_model.version
+            else:
+                model_id = "Unknown"  # or handle case where no models exist
+            logger.debug("model_id : %s"%(model_id))
+        except MultiValueDictKeyError as ke:
+            logger.error(f"no model info passed {ke}")
+            model_id = "Unknown"
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -80,22 +95,7 @@ class RegisterViewSet(viewsets.ModelViewSet):
         # 🔸 Add to vector index
         vector = np.array(represent_list, dtype=np.float32).reshape(1, -1)
         vstore.add_vec_to_index(vector, int(next_vectorid))
-        vstore.save_index(FAISS_outfile)
-
-        model_ver = request.data['model_ver']
-        logger.debug(f"model_version : {model_ver}")
-        latest_model = AIarchive.objects.filter(version=model_ver).last()
-        print(latest_model)
-        if latest_model:
-            model_id = latest_model.modelid
-            # Optional: also retrieve other info if needed
-            model_name = latest_model.modelname
-            model_version = latest_model.version
-        else:
-            model_id = "Unknown"  # or handle case where no models exist
-        logger.debug("model_id : %s"%(model_id))
-        
-
+        vstore.save_index(FAISS_outfile)    
 
         return Response({'message': f"사용자 {uuid}의 정보가 등록되었습니다", 'status': "SUCCESS", 'model_ver': model_id}, status=http_codes[201])
         
